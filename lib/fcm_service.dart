@@ -4,8 +4,9 @@ import 'dart:convert';
 
 import 'package:arcane/arcane.dart';
 import 'package:arcane_auth/arcane_auth.dart';
+import 'package:arcane_fcm/arcane_fcm.dart';
+import 'package:arcane_fcm_models/arcane_fcm_models.dart';
 import 'package:crypto/crypto.dart';
-import 'package:dart_mappable/dart_mappable.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:fast_log/fast_log.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -15,52 +16,7 @@ import 'package:serviced/serviced.dart';
 
 const int _expirationTome = 1000 * 60 * 60 * 24 * 30;
 
-mixin ArcaneFCMNotification {
-  String get user;
-  Map<String, dynamic> toMap();
-}
-
-class FCMDeviceHook extends MappingHook {
-  @override
-  Object? beforeDecode(Object? value) =>
-      value is Map<String, dynamic> ? FCMDeviceInfo.fromMap(value) : value;
-  @override
-  Object? beforeEncode(Object? value) =>
-      value is FCMDeviceInfo ? value.toMap() : value;
-}
-
-class FCMDeviceInfo {
-  final String token;
-  final String hash;
-  final String platform;
-  final DateTime createdAt;
-
-  FCMDeviceInfo({
-    required this.token,
-    required this.hash,
-    required this.platform,
-    required this.createdAt,
-  });
-
-  factory FCMDeviceInfo.fromMap(Map<String, dynamic> map) => FCMDeviceInfo(
-    token: map["token"],
-    hash: map["hash"],
-    platform: map["platform"],
-    createdAt: DateTime.fromMillisecondsSinceEpoch(
-      map["createdAt"],
-      isUtc: true,
-    ),
-  );
-
-  Map<String, dynamic> toMap() => {
-    "token": token,
-    "hash": hash,
-    "platform": platform,
-    "createdAt": createdAt.millisecondsSinceEpoch,
-  };
-}
-
-abstract class NotificationService<N extends ArcaneFCMNotification>
+abstract class ArcaneFCMService<N extends ArcaneFCMMessage>
     extends StatelessService
     implements AsyncStartupTasked {
   late BaseDeviceInfo deviceInfo;
@@ -70,7 +26,7 @@ abstract class NotificationService<N extends ArcaneFCMNotification>
   StreamSubscription<String>? fcmTokenRefreshSubscription;
   final Queue<N> notificationQueue = Queue();
   final Map<String, VoidCallback> notificationQueueHandlers = {};
-  Map<Type, NotificationHandler<N>> notificationHandlers = {};
+  Map<Type, ArcaneFCMHandler<N>> notificationHandlers = {};
 
   Future<void> writeUserDevices(String user, List<FCMDeviceInfo> devices);
 
@@ -78,7 +34,7 @@ abstract class NotificationService<N extends ArcaneFCMNotification>
 
   N notificationFromMap(Map<String, dynamic> map);
 
-  Map<Type, NotificationHandler<N>> onRegisterNotificationHandlers();
+  Map<Type, ArcaneFCMHandler<N>> onRegisterNotificationHandlers();
 
   @override
   Future<void> onStartupTask() async {
@@ -251,7 +207,7 @@ abstract class NotificationService<N extends ArcaneFCMNotification>
   }
 
   Future<void> handleNotification(BuildContext context, N notification) async {
-    NotificationHandler? h = notificationHandlers[notification.runtimeType];
+    ArcaneFCMHandler? h = notificationHandlers[notification.runtimeType];
 
     if (h == null) {
       error(
@@ -363,7 +319,9 @@ abstract class NotificationService<N extends ArcaneFCMNotification>
     verbose("Invalidate Expired FCM Tokens started");
     List<String> removeHashes = [];
     List<String> removeDevices = [];
-    List<FCMDeviceInfo> rd = await readUserDevices($uid!);
+    List<FCMDeviceInfo> rd = await readUserDevices(
+      $uid!,
+    ).then((i) => i.toList());
 
     for (FCMDeviceInfo i in rd.toList()) {
       String hash = hashFCM(i.token);
@@ -398,7 +356,9 @@ abstract class NotificationService<N extends ArcaneFCMNotification>
     }
 
     String hash = hashFCM(currentToken);
-    List<FCMDeviceInfo> rd = await readUserDevices($uid!);
+    List<FCMDeviceInfo> rd = await readUserDevices(
+      $uid!,
+    ).then((i) => i.toList());
 
     if (!rd.any((i) => hash == i.hash)) {
       info("Registering new FCM token for user");
@@ -429,12 +389,6 @@ abstract class NotificationService<N extends ArcaneFCMNotification>
 
     return true;
   }
-}
-
-abstract class NotificationHandler<N extends ArcaneFCMNotification> {
-  const NotificationHandler();
-
-  Future<void> handle(BuildContext context, N notification);
 }
 
 String hashFCM(String fcm) =>

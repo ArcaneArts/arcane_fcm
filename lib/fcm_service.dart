@@ -341,53 +341,59 @@ abstract class ArcaneFCMService<N extends ArcaneFCMMessage>
   }
 
   Future<bool> registerToken([String? newToken]) async {
-    if (!$signedIn) {
-      warn("Can't register FCM Token yet as we're not signed in!");
-    }
+    try {
+      if (!$signedIn) {
+        warn("Can't register FCM Token yet as we're not signed in!");
+      }
 
-    verbose("Register FCM Token started");
+      verbose("Register FCM Token started");
 
-    String? currentToken =
-        newToken ?? await FirebaseMessaging.instance.getToken();
+      String? currentToken =
+          newToken ?? await FirebaseMessaging.instance.getToken();
 
-    if (currentToken == null) {
-      warn("Unable to obtain FCM token at this time! Will try next launch!");
+      if (currentToken == null) {
+        warn("Unable to obtain FCM token at this time! Will try next launch!");
+        return false;
+      }
+
+      String hash = hashFCM(currentToken);
+      List<FCMDeviceInfo> rd = await readUserDevices(
+        $uid!,
+      ).then((i) => i.toList());
+
+      if (!rd.any((i) => hash == i.hash)) {
+        info("Registering new FCM token for user");
+        rd.add(
+          FCMDeviceInfo(
+            token: currentToken,
+            hash: hash,
+            platform:
+                kIsWeb
+                    ? "Web"
+                    : Platform.isIOS
+                    ? "iOS ${(deviceInfo as IosDeviceInfo).model} ${(deviceInfo as IosDeviceInfo).name}"
+                    : Platform.isMacOS
+                    ? "macOS ${(deviceInfo as MacOsDeviceInfo).model} ${(deviceInfo as MacOsDeviceInfo).computerName}"
+                    : Platform.isAndroid
+                    ? "Android ${(deviceInfo as AndroidDeviceInfo).model} ${(deviceInfo as AndroidDeviceInfo).name}"
+                    : Platform.isWindows
+                    ? "Windows ${(deviceInfo as WindowsDeviceInfo).productName} ${(deviceInfo as WindowsDeviceInfo).computerName}"
+                    : Platform.isLinux
+                    ? "Linux ${(deviceInfo as LinuxDeviceInfo).name} ${(deviceInfo as LinuxDeviceInfo).prettyName}"
+                    : "Unknown ${hashFCM(jsonEncode(deviceInfo.data))}",
+            createdAt: DateTime.timestamp(),
+          ),
+        );
+        await writeUserDevices($uid!, rd);
+        success("Registered new FCM token and updated user settings.");
+      }
+
+      return true;
+    } catch (e, es) {
+      warn("Failed to register token $e");
+      warn(es);
       return false;
     }
-
-    String hash = hashFCM(currentToken);
-    List<FCMDeviceInfo> rd = await readUserDevices(
-      $uid!,
-    ).then((i) => i.toList());
-
-    if (!rd.any((i) => hash == i.hash)) {
-      info("Registering new FCM token for user");
-      rd.add(
-        FCMDeviceInfo(
-          token: currentToken,
-          hash: hash,
-          platform:
-              kIsWeb
-                  ? "Web"
-                  : Platform.isIOS
-                  ? "iOS ${(deviceInfo as IosDeviceInfo).model} ${(deviceInfo as IosDeviceInfo).name}"
-                  : Platform.isMacOS
-                  ? "macOS ${(deviceInfo as MacOsDeviceInfo).model} ${(deviceInfo as MacOsDeviceInfo).computerName}"
-                  : Platform.isAndroid
-                  ? "Android ${(deviceInfo as AndroidDeviceInfo).model} ${(deviceInfo as AndroidDeviceInfo).name}"
-                  : Platform.isWindows
-                  ? "Windows ${(deviceInfo as WindowsDeviceInfo).productName} ${(deviceInfo as WindowsDeviceInfo).computerName}"
-                  : Platform.isLinux
-                  ? "Linux ${(deviceInfo as LinuxDeviceInfo).name} ${(deviceInfo as LinuxDeviceInfo).prettyName}"
-                  : "Unknown ${hashFCM(jsonEncode(deviceInfo.data))}",
-          createdAt: DateTime.timestamp(),
-        ),
-      );
-      await writeUserDevices($uid!, rd);
-      success("Registered new FCM token and updated user settings.");
-    }
-
-    return true;
   }
 }
 

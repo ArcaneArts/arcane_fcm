@@ -19,7 +19,7 @@ const int _expirationTome = 1000 * 60 * 60 * 24 * 30;
 abstract class ArcaneFCMService<N extends ArcaneFCMMessage>
     extends StatelessService
     implements AsyncStartupTasked {
-  late BaseDeviceInfo deviceInfo;
+  BaseDeviceInfo? deviceInfo;
   FlutterLocalNotificationsPlugin fn = FlutterLocalNotificationsPlugin();
   DeviceInfoPlugin di = DeviceInfoPlugin();
   late bool notificationsAllowed;
@@ -39,8 +39,13 @@ abstract class ArcaneFCMService<N extends ArcaneFCMMessage>
   @override
   Future<void> onStartupTask() async {
     notificationHandlers.addAll(onRegisterNotificationHandlers());
-    deviceInfo = await di.deviceInfo;
-    verbose("Device Info ${deviceInfo.data}");
+    try {
+      deviceInfo = await di.deviceInfo;
+    } catch (e) {
+      warn("Failed to get device info $e");
+    }
+
+    verbose("Device Info ${deviceInfo?.data}");
     await setupLocalNotifications();
     await setupFCMNotifications();
     fcmTokenRefreshSubscription = FirebaseMessaging.instance.onTokenRefresh
@@ -370,17 +375,17 @@ abstract class ArcaneFCMService<N extends ArcaneFCMMessage>
             platform:
                 kIsWeb
                     ? "Web"
-                    : Platform.isIOS
+                    : Platform.isIOS && deviceInfo is IosDeviceInfo
                     ? "iOS ${(deviceInfo as IosDeviceInfo).model} ${(deviceInfo as IosDeviceInfo).name}"
-                    : Platform.isMacOS
+                    : Platform.isMacOS && deviceInfo is MacOsDeviceInfo
                     ? "macOS ${(deviceInfo as MacOsDeviceInfo).model} ${(deviceInfo as MacOsDeviceInfo).computerName}"
-                    : Platform.isAndroid
+                    : Platform.isAndroid && deviceInfo is AndroidDeviceInfo
                     ? "Android ${(deviceInfo as AndroidDeviceInfo).model} ${(deviceInfo as AndroidDeviceInfo).name}"
-                    : Platform.isWindows
+                    : Platform.isWindows && deviceInfo is WindowsDeviceInfo
                     ? "Windows ${(deviceInfo as WindowsDeviceInfo).productName} ${(deviceInfo as WindowsDeviceInfo).computerName}"
-                    : Platform.isLinux
+                    : Platform.isLinux && deviceInfo is LinuxDeviceInfo
                     ? "Linux ${(deviceInfo as LinuxDeviceInfo).name} ${(deviceInfo as LinuxDeviceInfo).prettyName}"
-                    : "Unknown ${hashFCM(jsonEncode(deviceInfo.data))}",
+                    : "Unknown ${hashFCM(jsonEncode(deviceInfo?.data))}",
             createdAt: DateTime.timestamp(),
           ),
         );

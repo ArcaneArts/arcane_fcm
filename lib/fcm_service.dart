@@ -60,24 +60,26 @@ abstract class ArcaneFCMService<N extends ArcaneFCMMessage>
     required String body,
     required Map<String, dynamic> payload,
   }) async {
-    await fn.show(
-      0,
-      title,
-      body,
-      NotificationDetails(
-        android: const AndroidNotificationDetails(
-          'notifications',
-          'Notifications',
-          channelDescription: 'Configure Notifications in Resilient',
-          importance: Importance.max,
-          priority: Priority.high,
-        ),
-        iOS: DarwinNotificationDetails(
-          interruptionLevel: InterruptionLevel.timeSensitive,
-        ),
-      ),
-      payload: jsonEncode(payload),
-    );
+    await fn
+        .show(
+          0,
+          title,
+          body,
+          NotificationDetails(
+            android: const AndroidNotificationDetails(
+              'notifications',
+              'Notifications',
+              channelDescription: 'Configure Notifications in Resilient',
+              importance: Importance.max,
+              priority: Priority.high,
+            ),
+            iOS: DarwinNotificationDetails(
+              interruptionLevel: InterruptionLevel.timeSensitive,
+            ),
+          ),
+          payload: jsonEncode(payload),
+        )
+        .then((i) => verbose("Sent Local Notification: $payload"));
   }
 
   Future<void> setupFCMNotifications() async {
@@ -226,9 +228,6 @@ abstract class ArcaneFCMService<N extends ArcaneFCMMessage>
     );
     try {
       await h.handle(context, notification);
-      success(
-        "Successfully handled notification with handler: ${h.runtimeType}",
-      );
     } catch (e, es) {
       error(
         "Failed to handle notification with handler: ${h.runtimeType}. Notification was ${notification.toMap()}",
@@ -252,7 +251,7 @@ abstract class ArcaneFCMService<N extends ArcaneFCMMessage>
         }
 
         notificationQueue.add(n);
-        success("Added ${n.runtimeType} to the notification handler queue.");
+        info("Added ${n.runtimeType} to the notification handler queue.");
       } catch (e, es) {
         error("Failed to decode notification: $payload");
         error(e);
